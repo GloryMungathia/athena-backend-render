@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     cors_origins: str = ""
     password_reset_url: str = "huza://reset-password"
     email_verify_url: str = "huza://verify-email"
+    admin_invite_code: str | None = None
 
     # --- Email & SMTP configuration ---
     email_from: str = "onboarding@resend.dev"
@@ -56,6 +57,18 @@ class Settings(BaseSettings):
     @classmethod
     def _normalize_url(cls, value: str) -> str:
         return normalize_database_url(value.strip())
+
+    @field_validator("admin_invite_code")
+    @classmethod
+    def _invite_code_strength(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            return None
+        if len(value) < 16:
+            raise ValueError("ADMIN_INVITE_CODE needs at least 16 characters")
+        return value
 
     @model_validator(mode="after")
     def _reject_placeholder_secret_in_production(self) -> "Settings":
