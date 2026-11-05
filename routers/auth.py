@@ -23,6 +23,8 @@ def user_dict(user: User) -> dict:
     data = {
         "id": str(user.user_id),
         "email": user.email,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
         "role": user.user_role.value,
         "email_verified": user.email_verified_at is not None,
     }
