@@ -1,0 +1,93 @@
+"""HTTP-aware application errors for FastAPI auth and service layers."""
+
+import math
+
+from fastapi import HTTPException
+
+
+class AppError(HTTPException):
+    status_code = 400
+    detail = "Bad request."
+
+    def __init__(
+        self, detail: str | None = None, headers: dict[str, str] | None = None
+    ) -> None:
+        super().__init__(
+            status_code=self.status_code,
+            detail=detail or self.detail,
+            headers=headers,
+        )
+
+
+class InvalidCredentials(AppError):
+    """Same message for a wrong email and a wrong password."""
+
+    status_code = 401
+    detail = "Email or password is incorrect."
+
+    def __init__(self) -> None:
+        super().__init__(headers={"WWW-Authenticate": "Bearer"})
+
+
+class AccountLocked(AppError):
+    status_code = 429
+
+    def __init__(self, retry_after_seconds: int) -> None:
+        minutes = max(1, math.ceil(retry_after_seconds / 60))
+        super().__init__(
+            f"Too many failed attempts. Try again in {minutes} minute(s).",
+            headers={"Retry-After": str(retry_after_seconds)},
+        )
+
+
+class InvalidToken(AppError):
+    status_code = 401
+    detail = "Not authenticated."
+
+    def __init__(self, detail: str | None = None) -> None:
+        super().__init__(detail, headers={"WWW-Authenticate": "Bearer"})
+
+
+class InvalidResetToken(AppError):
+    status_code = 400
+    detail = "This reset link is invalid or has expired."
+
+
+class WrongPassword(AppError):
+    status_code = 400
+    detail = "Current password is incorrect."
+
+
+class WeakPassword(AppError):
+    status_code = 400
+    detail = "Password needs 8-128 characters and at least one digit."
+
+
+class PermissionDenied(AppError):
+    status_code = 403
+    detail = "You do not have permission to do this."
+
+
+class NotFound(AppError):
+    status_code = 404
+    detail = "Not found."
+
+
+class EmailTaken(AppError):
+    status_code = 409
+    detail = "An account with this email already exists."
+
+
+class InvalidVerificationCode(AppError):
+    status_code = 400
+    detail = "This verification code is invalid or has expired."
+
+
+class BusinessNotEditable(AppError):
+    status_code = 409
+    detail = "Your business details cannot be changed right now."
+
+
+class InvalidBusinessDetails(AppError):
+    status_code = 400
+    detail = "These business details are not allowed."
