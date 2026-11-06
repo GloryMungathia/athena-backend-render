@@ -2,7 +2,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from core.dependencies import get_user_service, require_admin
 from core.exceptions import NotFound
@@ -20,6 +20,10 @@ router = APIRouter(
     tags=["admin"],
     dependencies=[Depends(require_admin)],
 )
+
+
+def business_name(business: Business) -> str:
+    return business.display_name or business.business_legal_name
 
 
 @router.get("/users", response_model=UserPage)
@@ -87,7 +91,7 @@ def overview(db: Session = Depends(get_db)):
         "queue": [
             {
                 "business_id": str(business.business_id),
-                "name": business.display_name or business.business_legal_name,
+                "name": business_name(business),
                 "kind": (business.supplier_kind or business.business_role).value,
                 "place": business.location.sub_county if business.location else "",
                 "submitted_at": business.created_at,
@@ -99,10 +103,7 @@ def overview(db: Session = Depends(get_db)):
                 "id": str(listing.listing_id),
                 "kind": "NEW_LISTING",
                 "title": "New listing",
-                "detail": (
-                    f"{listing.material_or_product} · "
-                    f"{business.display_name or business.business_legal_name}"
-                ),
+                "detail": f"{listing.material_or_product} · {business_name(business)}",
                 "at": listing.created_at,
             }
             for listing, business in recent_listings
@@ -115,7 +116,7 @@ def listing_row(listing: Listing, business: Business) -> dict:
         "listing_id": str(listing.listing_id),
         "material_or_product": listing.material_or_product,
         "business_id": str(business.business_id),
-        "business_name": business.display_name or business.business_legal_name,
+        "business_name": business_name(business),
         "stream": listing.stream.value,
         "quantity": float(listing.quantity),
         "unit": listing.unit.value,
@@ -150,3 +151,29 @@ def remove_listing(listing_id: uuid.UUID, db: Session = Depends(get_db)):
     db.refresh(listing)
     business = db.get(Business, listing.business_id)
     return listing_row(listing, business)
+
+
+@router.get("/enquiries")
+def list_enquiries(db: Session = Depends(get_db)):
+    """Status of every enquiry. Messages are not included."""
+    buyer = aliased(Business)
+    seller = aliased(Business)
+    rows = db.execute(
+        select(Enquiry, Listing.material_or_product, buyer, seller)
+        .join(Listing, Listing.listing_id == Enquiry.listing_id)
+        .join(buyer, buyer.business_id == Enquiry.buyer_business_id)
+        .join(seller, seller.business_id == Enquiry.seller_business_id)
+        .order_by(Enquiry.updated_at.desc())
+        .limit(500)
+    ).all()
+    return [
+        {
+            "enquiry_id": str(enquiry.enquiry_id),
+            "about": material,
+            "buyer": business_name(buyer_business),
+            "seller": business_name(seller_business),
+            "status": enquiry.status.value,
+            "updated_at": enquiry.updated_at,
+        }
+        for enquiry, material, buyer_business, seller_business in rows
+    ]
