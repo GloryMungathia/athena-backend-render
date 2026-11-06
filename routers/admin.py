@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from core.dependencies import get_user_service, require_admin
+from core.exceptions import NotFound
 from database import get_db
 from models.business import ApprovalStatus, Business
 from models.enquiry import Enquiry, EnquiryStatus
@@ -107,3 +108,45 @@ def overview(db: Session = Depends(get_db)):
             for listing, business in recent_listings
         ],
     }
+
+
+def listing_row(listing: Listing, business: Business) -> dict:
+    return {
+        "listing_id": str(listing.listing_id),
+        "material_or_product": listing.material_or_product,
+        "business_id": str(business.business_id),
+        "business_name": business.display_name or business.business_legal_name,
+        "stream": listing.stream.value,
+        "quantity": float(listing.quantity),
+        "unit": listing.unit.value,
+        "status": listing.status.value,
+        "removed_at": (
+            listing.updated_at if listing.status == ListingStatus.CLOSED else None
+        ),
+    }
+
+
+@router.get("/listings")
+def list_listings(db: Session = Depends(get_db)):
+    """Every listing a business has put up, except drafts."""
+    rows = db.execute(
+        select(Listing, Business)
+        .join(Business, Business.business_id == Listing.business_id)
+        .where(Listing.status != ListingStatus.DRAFT)
+        .order_by(Listing.created_at.desc())
+        .limit(500)
+    ).all()
+    return [listing_row(listing, business) for listing, business in rows]
+
+
+@router.post("/listings/{listing_id}/remove")
+def remove_listing(listing_id: uuid.UUID, db: Session = Depends(get_db)):
+    """Staff removal: the listing is closed and no longer visible to businesses."""
+    listing = db.get(Listing, listing_id)
+    if listing is None:
+        raise NotFound()
+    listing.status = ListingStatus.CLOSED
+    db.commit()
+    db.refresh(listing)
+    business = db.get(Business, listing.business_id)
+    return listing_row(listing, business)
