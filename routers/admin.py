@@ -177,3 +177,7 @@ def list_enquiries(db: Session = Depends(get_db)):
         }
         for enquiry, material, buyer_business, seller_business in rows
     ]
+
+from routers.admin_metrics import router as metrics_router
+
+router.include_router(metrics_router)
